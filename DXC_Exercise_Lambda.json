@@ -1,0 +1,92 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Resources": {
+        "DXCROLE": {
+            "Type": "AWS::IAM::Role",
+			"Properties": {
+				"RoleName" : "DXC_POC_ROLE",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+				"Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "dxccloudwatch",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "logs:*",
+                                    "Resource": "arn:aws:logs:*:*:*"
+                                }
+                            ]
+                        }
+                    },
+					{
+						"PolicyName": "dxcS3write",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:PutObject",
+                                    "Resource": "arn:aws:s3:::dxcparameter/*"
+                                }
+                            ]
+                        }
+					},
+					{
+						"PolicyName": "dxcssmread",
+						"PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "ssm:Get*",
+                                    "Resource": { "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/UserName*"}
+								}
+						
+						
+							]
+						}
+					}
+                ]
+            }
+        },
+        "LambdaFunResource": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "FunctionName": "exercise-lambda",
+                
+                "Code": {
+                    "S3Bucket" : "dxclambdabucket",
+					"S3Key" : "lambda_function.zip"	
+                },
+                "Description": "Lambda function load the ssm param value into s3 bucket",
+				"Runtime": "python3.9",
+                "Handler": "lambda_function.lambda_handler",
+				"Environment" : {
+					"Variables" : {
+						"ssm_parameter" : "UserName"
+					}
+				},
+                "Role" : {"Fn::GetAtt": ["DXCROLE", "Arn"]}
+                
+            }
+        }
+  }
+}
