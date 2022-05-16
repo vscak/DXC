@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+
+    DXCROLENEW:
+        Type: AWS::IAM::Role
+        Properties:
+            RoleName: DXC_ROLE_CFNR
+            AssumeRolePolicyDocument:
+                Version: 2012-10-17
+                Statement:
+                    Effect: Allow
+                    Principal: 
+                        Service: lambda.amazonaws.com
+                    Action: sts:AssumeRole
+                    
+            Path: /
+            Policies:
+              - PolicyName: dxccloudwatchcfnr
+                PolicyDocument: 
+                    Version: 2012-10-17
+                    Statement:
+                        Effect: Allow
+                        Action: logs:*
+                        Resource: arn:aws:logs:*:*:*
+                        
+              - PolicyName: dxcS3writecfnr
+                PolicyDocument:
+                    Version: 2012-10-17
+                    Statement:
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: arn:aws:s3:::dxcparametercfnr/*
+                
+              - PolicyName: dxcssmreadcfnr
+                PolicyDocument:
+                    Version: 2012-10-17
+                    Statement:
+                        Effect: Allow
+                        Action: ssm:Get*
+                        Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/UserName'
+                        
+    LambdaFunctionResource:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: exercise-lambda-cfnr
+            Code: 
+                S3Bucket: dxclambdabucketcfnr
+                S3Key: lambda_function.zip
+            
+            Description: Lambda function load the ssm param value into s3 bucket
+            Runtime: python3.9
+            Handler: lambda_function.lambda_handler
+            Environment: 
+                Variables: 
+                    ssm_parameter: UserName
+            Role: !GetAtt DXCROLENEW.Arn
+            
+            
+        
+                        
+                            
+    LambdaTrigger:
+        
+        Type: AWS::Lambda::Function
+        DependsOn: LambdaFunctionResource
+        Properties:
+            FunctionName: LambdaTriggercfn
+            Description: 'Lambda invoke wrapper for Custom CFN actions'
+            Code:
+                ZipFile : |
+                    import boto3, json
+                    import cfnresponse
+                    
+                    def handler(event, context):
+                        print('EVENT:')
+                        print(event)
+                        
+                        if event['RequestType'] == "Create":
+                            lambda_client = boto3.client('lambda')
+                            
+                            cfn_event = {
+                                "param1" : "${Param1}",
+                                "param2" : "${Param2}"
+                            }
+                            
+                            lambda_client.invoke(
+                                FunctionName='exercise-lambda-cfnr',
+                                InvocationType='Event',
+                                Payload=json.dumps(cfn_event)
+                            )
+                        responseValue = 120
+                                           
+                        responseData = {}
+                                                
+                        responseData['Data'] = responseValue
+                                               
+                        cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'exercise-lambda-cfnr')
+                        
+            Handler: index.handler
+            Role: arn:aws:iam::369902566570:role/DemoLambdacfnresponserole
+            Runtime: python3.9
+            Timeout: 60
+
+    LambdaInvoke:
+        Type: AWS::CloudFormation::CustomResource
+        DependsOn: LambdaTrigger
+        Version: "1.0"
+        Properties:
+            ServiceToken: !GetAtt LambdaTrigger.Arn
+
+Outputs:
+  CustomLambdaOutput: 
+    Description: Message from custom lambda
+    Value: !Ref LambdaTrigger           
